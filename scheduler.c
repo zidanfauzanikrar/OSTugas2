@@ -44,6 +44,11 @@ typedef struct {
     State state;
     int start_time;        /* -1 selama proses belum pernah RUNNING */
     int completion_time;
+
+    int turnaround_time;
+    int waiting_time;
+    int response_time;
+
     StateEntry history[MAX_HISTORY];
     int history_count;
 } Process;
@@ -92,7 +97,7 @@ static void log_state(Process *p, State s, int t) {
     }
 }
 
-/* [SEMENTARA] Seharusnya dibuat PIC 1 bersama pembacaan input. */
+
 static void init_process(Process *p, int pid, int at, int bt) {
     p->pid             = pid;
     p->arrival_time    = at;
@@ -101,10 +106,52 @@ static void init_process(Process *p, int pid, int at, int bt) {
     p->state           = NEW;
     p->start_time      = -1;
     p->completion_time = 0;
+    p->turnaround_time = 0;
+    p->waiting_time    = 0;
+    p->response_time   = -1;
+
     p->history_count   = 0;
     p->history[p->history_count].state = NEW;
     p->history[p->history_count].time  = 0;
     p->history_count++;
+}
+
+int input_processes(Process p[]) {
+    int n;
+    printf("Jumlah proses: ");
+    while (scanf("%d", &n) != 1 || n < 1 || n > MAX_PROC) {
+        printf("Jumlah proses harus antara 1 sampai %d. Masukkan ulang: ", MAX_PROC);
+        while (getchar() != '\n');
+    }
+
+    for (int i = 0; i < n; i++){
+        int at, bt;
+        printf("P%d - masukkan Arrival Time dan Burst Time: ", i+1);
+        while(scanf("%d %d", &at, &bt) != 2 || at < 0 || bt < 1){
+            printf("Input tidak valid (AT >= 0, BT >= 1). Masukkan ulang P%d: ", i+1);
+            while(getchar() != '\n');
+        }
+        init_process(&p[i], i+1, at, bt);
+    }
+    printf("\n");
+    return n;
+}
+
+static void print_separator(void) {
+    for (int i = 0; i < 69; i++) putchar('=');
+    putchar('\n');
+}
+
+void print_process_input(const Process p[], int n) {
+    print_separator();
+    printf("PROCESS INPUT\n");
+    print_separator();
+    printf("%-8s %-15s %-10s\n", "PID", "Arrival Time", "Burst Time");
+    for (int i = 0; i < n; i++){
+        printf("P%-7d %-15d %-10d\n", p[i].pid, p[i].arrival_time, p[i].burst_time);
+    }
+    print_separator();
+    printf("\n");
 }
 
 /* ---------- Pencatatan jejak eksekusi ---------- */
@@ -236,11 +283,6 @@ void srtf_run(Process p[], int n, SimResult *res) {
 
 /* ---------- Output bagian ini ---------- */
 
-static void print_separator(void) {
-    for (int i = 0; i < 69; i++) putchar('=');
-    putchar('\n');
-}
-
 /* Output "PREEMPTION INFORMATION" khusus Varian SRTF. */
 void print_preemption_info(const SimResult *res) {
     print_separator();
@@ -284,23 +326,9 @@ void print_state_transitions(const Process p[], int n) {
 int main(void) {
     Process p[MAX_PROC];
     SimResult res;
-    int n;
 
-    printf("Jumlah proses: ");
-    if (scanf("%d", &n) != 1 || n < 1 || n > MAX_PROC) {
-        fprintf(stderr, "Jumlah proses harus 1 sampai %d\n", MAX_PROC);
-        return 1;
-    }
-    for (int i = 0; i < n; i++) {
-        int at, bt;
-        printf("P%d - masukkan Arrival Time dan Burst Time: ", i + 1);
-        if (scanf("%d %d", &at, &bt) != 2 || at < 0 || bt < 1) {
-            fprintf(stderr, "Input tidak valid (AT >= 0, BT >= 1)\n");
-            return 1;
-        }
-        init_process(&p[i], i + 1, at, bt);
-    }
-    printf("\n");
+    int n = input_processes(p);
+    print_process_input(p, n);
 
     srtf_run(p, n, &res);
 
