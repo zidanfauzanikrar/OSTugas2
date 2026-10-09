@@ -321,6 +321,100 @@ void print_state_transitions(const Process p[], int n) {
     }
 }
 
+/* ---------- BAGIAN PIC 4: Perhitungan Metrik (Bagian 3, 4, 5) ---------- */
+
+/*
+ * Menghitung seluruh metrik penjadwalan per proses:
+ *   - Turnaround Time (TAT) = Completion Time (CT) - Arrival Time (AT)
+ *   - Waiting Time (WT)    = Turnaround Time (TAT) - Burst Time (BT)
+ *   - Response Time (RT)   = Start Time (ST) - Arrival Time (AT)
+ */
+void calculate_metrics(Process p[], int n) {
+    for (int i = 0; i < n; i++) {
+        p[i].turnaround_time = p[i].completion_time - p[i].arrival_time;
+        p[i].waiting_time    = p[i].turnaround_time - p[i].burst_time;
+        p[i].response_time   = p[i].start_time - p[i].arrival_time;
+    }
+}
+
+/*
+ * Bagian 3: SCHEDULING TABLE
+ * Menampilkan tabel hasil penjadwalan untuk setiap proses.
+ */
+void print_scheduling_table(const Process p[], int n) {
+    print_separator();
+    printf("SCHEDULING TABLE\n");
+    print_separator();
+    printf("PID          AT       BT       CT      TAT       WT       RT\n");
+    for (int i = 0; i < 69; i++) putchar('-');
+    putchar('\n');
+    for (int i = 0; i < n; i++) {
+        printf("P%-11d %3d      %3d      %3d      %3d      %3d      %3d\n",
+               p[i].pid,
+               p[i].arrival_time,
+               p[i].burst_time,
+               p[i].completion_time,
+               p[i].turnaround_time,
+               p[i].waiting_time,
+               p[i].response_time);
+    }
+    print_separator();
+    printf("\n");
+}
+
+/*
+ * Bagian 4: SCHEDULING PERFORMANCE
+ * Menghitung dan menampilkan nilai performa rata-rata (Avg WT, TAT, RT).
+ */
+void print_scheduling_performance(const Process p[], int n) {
+    double total_wt  = 0;
+    double total_tat = 0;
+    double total_rt  = 0;
+
+    for (int i = 0; i < n; i++) {
+        total_wt  += p[i].waiting_time;
+        total_tat += p[i].turnaround_time;
+        total_rt  += p[i].response_time;
+    }
+
+    print_separator();
+    printf("SCHEDULING PERFORMANCE\n");
+    print_separator();
+    printf("Average Waiting Time    : %.2f\n", total_wt / n);
+    printf("Average Turnaround Time : %.2f\n", total_tat / n);
+    printf("Average Response Time   : %.2f\n", total_rt / n);
+    printf("\n");
+}
+
+/*
+ * Bagian 5: CPU UTILIZATION AND THROUGHPUT
+ * Menghitung efisiensi CPU dan produktivitas penjadwalan.
+ */
+void print_cpu_utilization_and_throughput(const Process p[], int n, const SimResult *res) {
+    int busy_time = 0;
+
+    for (int i = 0; i < res->segment_count; i++) {
+        if (res->segments[i].pid != -1) {
+            busy_time += (res->segments[i].end - res->segments[i].start);
+        }
+    }
+
+    double cpu_utilization = 0.0;
+    double throughput      = 0.0;
+
+    if (res->total_time > 0) {
+        cpu_utilization = ((double)busy_time / res->total_time) * 100.0;
+        throughput      = (double)n / res->total_time;
+    }
+
+    print_separator();
+    printf("CPU UTILIZATION AND THROUGHPUT\n");
+    print_separator();
+    printf("CPU Utilization : %.2f%%\n", cpu_utilization);
+    printf("Throughput      : %.2f process/time unit\n", throughput);
+    printf("\n");
+}
+
 /* ---------- [SEMENTARA] main untuk pengujian ---------- */
 
 int main(void) {
@@ -332,7 +426,7 @@ int main(void) {
 
     srtf_run(p, n, &res);
 
-    /* [SEMENTARA] Pengganti Gantt Chart (PIC 3) dan Scheduling Table (PIC 4). */
+    /* [SEMENTARA] Pengganti Gantt Chart dan Context Switch (PIC 3) */
     printf("[DEBUG] Jejak eksekusi:");
     for (int i = 0; i < res.segment_count; i++) {
         if (res.segments[i].pid == -1)
@@ -341,17 +435,21 @@ int main(void) {
             printf(" | P%d %d-%d", res.segments[i].pid,
                    res.segments[i].start, res.segments[i].end);
     }
-    printf(" |\n");
-    for (int i = 0; i < n; i++) {
-        printf("[DEBUG] P%d AT=%d BT=%d ST=%d CT=%d\n", p[i].pid,
-               p[i].arrival_time, p[i].burst_time,
-               p[i].start_time, p[i].completion_time);
-    }
-    printf("\n");
+    printf(" |\n\n");
 
+    /* Output khusus SRTF: Preemption Information */
     print_preemption_info(&res);
     printf("\n");
+
+    /* PIC 4: Kalkulasi dan tampilkan seluruh metrik (Bagian 3, 4, 5) */
+    calculate_metrics(p, n);
+    print_scheduling_table(p, n);
+    print_scheduling_performance(p, n);
+    print_cpu_utilization_and_throughput(p, n, &res);
+
+    /* Bagian 7: Transisi State */
     print_state_transitions(p, n);
 
     return 0;
 }
+
