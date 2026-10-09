@@ -12,12 +12,10 @@
  *   Process.start_time       -> waktu pertama kali RUNNING (PIC 4: Response Time)
  *   Process.completion_time  -> Completion Time (PIC 4: TAT, WT)
  *   SimResult.segments       -> jejak eksekusi {pid, start, end}, pid = -1 berarti CPU idle
- *                               (PIC 3: Gantt Chart dan Context Switch)
- *   SimResult.preemptions    -> daftar kejadian preemption (PIC 3: Preemption Information)
+ *                               (Gantt Chart dan Context Switch)
+ *   SimResult.preemptions    -> daftar kejadian preemption (Preemption Information)
  *
- * Fungsi init_process() dan main() di bawah hanya kerangka sementara untuk
- * pengujian. Bagian input (PIC 1), Gantt Chart dan Context Switch (PIC 3),
- * serta metrik (PIC 4) akan menggantikan bagian bertanda [SEMENTARA].
+ * Bagian input dan metrik dikerjakan oleh PIC masing-masing.
  */
 
 #include <stdio.h>
@@ -281,7 +279,91 @@ void srtf_run(Process p[], int n, SimResult *res) {
     res->total_time = t;
 }
 
-/* ---------- Output bagian ini ---------- */
+/* ---------- Gantt Chart, Preemption, dan Context Switch ---------- */
+
+/* Panjang representasi desimal sebuah bilangan non-negatif. */
+static int decimal_width(int value) {
+    int width = 1;
+    while (value >= 10) {
+        value /= 10;
+        width++;
+    }
+    return width;
+}
+
+/*
+ * Bagian 2: menampilkan setiap segmen eksekusi sebagai Gantt Chart.
+ * Batas waktu dicetak tepat di bawah batas antarsel. Segmen IDLE ikut
+ * ditampilkan agar periode ready queue kosong tetap terlihat jelas.
+ */
+void print_gantt_chart(const SimResult *res) {
+    int cell_width[MAX_SEGMENTS];
+
+    print_separator();
+    printf("CPU EXECUTION TIMELINE (GANTT CHART)\n");
+    print_separator();
+
+    if (res->segment_count == 0) {
+        printf("Tidak ada segmen eksekusi.\n\n");
+        return;
+    }
+
+    /* Tentukan lebar tiap sel berdasarkan label dan angka waktunya. */
+    for (int i = 0; i < res->segment_count; i++) {
+        char label[16];
+        int label_width = 0;
+
+        if (res->segments[i].pid == -1) {
+            snprintf(label, sizeof(label), "IDLE");
+        } else {
+            snprintf(label, sizeof(label), "P%d", res->segments[i].pid);
+        }
+
+        for (int k = 0; label[k] != '\0'; k++) {
+            label_width = k + 1;
+        }
+
+        cell_width[i] = label_width + 2;
+        if (cell_width[i] < decimal_width(res->segments[i].start) + 1) {
+            cell_width[i] = decimal_width(res->segments[i].start) + 1;
+        }
+        if (cell_width[i] < 6) {
+            cell_width[i] = 6;
+        }
+    }
+
+    /* Garis atas. */
+    for (int i = 0; i < res->segment_count; i++) {
+        putchar('+');
+        for (int k = 0; k < cell_width[i]; k++) putchar('-');
+    }
+    printf("+\n");
+
+    /* Label proses/IDLE. */
+    for (int i = 0; i < res->segment_count; i++) {
+        char label[16];
+        if (res->segments[i].pid == -1) {
+            snprintf(label, sizeof(label), "IDLE");
+        } else {
+            snprintf(label, sizeof(label), "P%d", res->segments[i].pid);
+        }
+        printf("| %-*s", cell_width[i] - 1, label);
+    }
+    printf("|\n");
+
+    /* Garis bawah. */
+    for (int i = 0; i < res->segment_count; i++) {
+        putchar('+');
+        for (int k = 0; k < cell_width[i]; k++) putchar('-');
+    }
+    printf("+\n");
+
+    /* Waktu awal setiap segmen dan waktu akhir simulasi. */
+    for (int i = 0; i < res->segment_count; i++) {
+        printf("%-*d", cell_width[i] + 1, res->segments[i].start);
+    }
+    printf("%d\n\n", res->segments[res->segment_count - 1].end);
+}
 
 /* Output "PREEMPTION INFORMATION" khusus Varian SRTF. */
 void print_preemption_info(const SimResult *res) {
@@ -298,6 +380,34 @@ void print_preemption_info(const SimResult *res) {
                e->time, e->preempted_pid, e->remaining, e->next_pid);
     }
     printf("\nTotal Preemption : %d\n", res->preempt_count);
+}
+
+/*
+ * Context switch dihitung saat CPU berpindah langsung dari satu proses ke
+ * proses lain. Initial dispatch serta perpindahan ke/dari IDLE bukan
+ * perpindahan antarproses, sehingga tidak dihitung.
+ */
+int count_context_switches(const SimResult *res) {
+    int count = 0;
+
+    for (int i = 1; i < res->segment_count; i++) {
+        int previous_pid = res->segments[i - 1].pid;
+        int current_pid  = res->segments[i].pid;
+
+        if (previous_pid != -1 && current_pid != -1 &&
+            previous_pid != current_pid) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/* Bagian 6: menampilkan jumlah context switch selama simulasi. */
+void print_context_switch_info(const SimResult *res) {
+    print_separator();
+    printf("CONTEXT SWITCH INFORMATION\n");
+    print_separator();
+    printf("Total Context Switch : %d\n\n", count_context_switches(res));
 }
 
 /* Output Bagian 7: PROCESS STATE TRANSITIONS. */
@@ -415,7 +525,7 @@ void print_cpu_utilization_and_throughput(const Process p[], int n, const SimRes
     printf("\n");
 }
 
-/* ---------- [SEMENTARA] main untuk pengujian ---------- */
+/* ---------- Program utama ---------- */
 
 int main(void) {
     Process p[MAX_PROC];
@@ -426,16 +536,8 @@ int main(void) {
 
     srtf_run(p, n, &res);
 
-    /* [SEMENTARA] Pengganti Gantt Chart dan Context Switch (PIC 3) */
-    printf("[DEBUG] Jejak eksekusi:");
-    for (int i = 0; i < res.segment_count; i++) {
-        if (res.segments[i].pid == -1)
-            printf(" | IDLE %d-%d", res.segments[i].start, res.segments[i].end);
-        else
-            printf(" | P%d %d-%d", res.segments[i].pid,
-                   res.segments[i].start, res.segments[i].end);
-    }
-    printf(" |\n\n");
+    /* Bagian 2: Gantt Chart/CPU Execution Timeline. */
+    print_gantt_chart(&res);
 
     /* Output khusus SRTF: Preemption Information */
     print_preemption_info(&res);
@@ -446,6 +548,9 @@ int main(void) {
     print_scheduling_table(p, n);
     print_scheduling_performance(p, n);
     print_cpu_utilization_and_throughput(p, n, &res);
+
+    /* Bagian 6: jumlah perpindahan CPU antarproses. */
+    print_context_switch_info(&res);
 
     /* Bagian 7: Transisi State */
     print_state_transitions(p, n);
